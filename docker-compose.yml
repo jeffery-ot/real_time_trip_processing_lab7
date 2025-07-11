@@ -3,8 +3,8 @@ services:
     image: public.ecr.aws/glue/aws-glue-libs:5
     command: ["pyspark"]
     volumes:
-      - ./scripts:/home/glue_user/workspace/scripts      # Only scripts mounted
-      - ~/.aws:/root/.aws                                # AWS credentials
+      - ./scripts:/home/glue_user/workspace/scripts    # Mount only scripts
+      - ~/.aws:/root/.aws                              # AWS credentials
     environment:
       - DISABLE_SSL=true
       - AWS_REGION=us-east-1
@@ -21,11 +21,14 @@ services:
     build:
       context: ./trip-kinesis-producer
     container_name: trip-kpl-producer
+    volumes:
+      - ~/.aws:/root/.aws                              # AWS credentials
+      - ./data:/app/data                               # Mount trip data
     environment:
       - AWS_REGION=us-east-1
-    volumes:
-      - ~/.aws:/root/.aws                                # AWS credentials                      
-      - ./data:/app/data                                 # Mount data
+    tty: true
+    stdin_open: true
+    command: ["bash"]                                  # Start in shell for manual script run
     depends_on:
       - glue_pyspark
     restart: on-failure
