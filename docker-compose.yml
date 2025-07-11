@@ -1,0 +1,31 @@
+services:
+  glue_pyspark:
+    image: public.ecr.aws/glue/aws-glue-libs:5
+    command: ["pyspark"]
+    volumes:
+      - ./scripts:/home/glue_user/workspace/scripts      # Only scripts mounted
+      - ~/.aws:/root/.aws                                # AWS credentials
+    environment:
+      - DISABLE_SSL=true
+      - AWS_REGION=us-east-1
+    ports:
+      - "4042:4040"    # Spark UI
+      - "18082:18080"  # Spark History Server
+    tty: true
+    stdin_open: true
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  kinesis_producer:
+    build:
+      context: ./trip-kinesis-producer
+    container_name: trip-kpl-producer
+    environment:
+      - AWS_REGION=us-east-1
+    volumes:
+      - ~/.aws:/root/.aws                                # AWS credentials                      
+      - ./data:/app/data                                 # Mount data
+    depends_on:
+      - glue_pyspark
+    restart: on-failure
