@@ -3,13 +3,74 @@
 This project simulates a real-world, event-driven architecture and will test your ability to build
 scalable ingestion, processing, and aggregation pipelines using AWS-native services.
 
+
++ ![alt text](docs/data_architecture.drawio.png)
+
+
+
+#  Real-Time Glue ETL Orchestration with Kinesis, Lambda, DynamoDB, EventBridge, and Delta Lake
+
+This project orchestrates a **serverless real-time ETL pipeline** that processes streaming data from **Kinesis**, persists and tracks job states with **DynamoDB**, manages concurrency with **SQS**, and writes computed **KPIs to Delta Lake on S3**. Glue job orchestration is automated using **Lambda + EventBridge**.
+
+---
+
+##  Architecture Overview
+
+```text
+Kinesis Data Stream
+        ↓
+  Stream Processor (Lambda)
+        ↓
+  TripEvents (DynamoDB) ──────▶ TTL Cleanup
+        ↓
+  Glue Trigger (Lambda) ──────▶ Glue Job
+        ↑                          ↓
+ EventBridge (Glue Job Events)    ↓
+        ↑                   KPI Write to Delta Lake (S3)
+    Glue Queue Lambda
+        ↓
+     SQS Queue
+```
+
+---
+
+##  Components
+
+| Component                     | Role                                                         |
+| ----------------------------- | ------------------------------------------------------------ |
+| **Kinesis Stream**            | Ingests real-time event data                                 |
+| **Lambda - Stream Processor** | Parses and stores events to DynamoDB (`TripEvents`)          |
+| **DynamoDB - TripEvents**     | Stores raw trip events with TTL for cleanup                  |
+| **DynamoDB - JobTracking**    | Tracks Glue job state and metadata                           |
+| **SQS Queue**                 | Buffers jobs over concurrency threshold                      |
+| **Lambda - Glue Trigger**     | Manages Glue job launches with concurrency control           |
+| **Lambda - Glue Queue**       | Listens to EventBridge events and dequeues from SQS          |
+| **EventBridge**               | Triggers on Glue job state changes                           |
+| **Glue Job**                  | Processes staged S3 JSONs, aggregates KPIs, upserts to Delta |
+| **Delta Lake (on S3)**        | Stores computed KPIs partitioned by `trip_date`              |
+
+
+##  Glue Job Logic (`kpi-computation.py`)
+
+* Reads **staged JSON files** from S3
+* Flattens and filters valid rows
+* Calculates KPIs (`sum`, `count`, `min`, `max`)
+* Writes:
+
+  * Raw data → Archived to S3 (partitioned by `trip_date`)
+  * KPIs → Upserts into **Delta Lake on S3**
+* Runs `OPTIMIZE` and `VACUUM` for Delta compaction & cleanup
+
+---
+
+
 ## AWS Glue Job Orchestration with Lambda, SQS, EventBridge & DynamoDB
 
 This setup enables scalable orchestration of AWS Glue jobs using Lambda, with job tracking in DynamoDB, concurrency control via SQS, and job state monitoring via EventBridge.
 
 ---
 
-##  Architecture Overview
+##  Architecture Overview For Glue Job Concurrency and Monitoring
 
 - **Glue Jobs** – ETL workloads
 - **Lambda Functions**
@@ -154,20 +215,6 @@ aws lambda update-function-configuration \
 
 ---
 
-##  Required IAM Permissions
-
-Attach the following policies to both Lambda roles:
-
-* `glue:StartJobRun`
-* `glue:GetJobRuns`
-* `dynamodb:GetItem`
-* `dynamodb:PutItem`
-* `dynamodb:UpdateItem`
-* `sqs:SendMessage`
-* `sqs:DeleteMessage`
-* `lambda:InvokeFunction`
-
----
 
 ##  Summary
 
@@ -176,7 +223,21 @@ Attach the following policies to both Lambda roles:
 * Fully event-driven orchestration with Lambda + EventBridge
 * Modular and scalable workflow
 
+
+##  Features
+
+*  Concurrency-controlled Glue job orchestration
+*  Event-driven state tracking
+*  Resilient with retries, dead-lettering, and streaming durability
+*  Automated KPI aggregation with Delta support
+*  TTL-based cleanup for TripEvents
+
 ---
 
-```
-```
+##  Notes
+
+* Ensure Glue has access to Delta Lake JARs (e.g., AWS Glue 3.0 with Spark 3.1+).
+* Optimize IAM permissions and Lambda memory/runtime for performance.
+* Monitor via CloudWatch Metrics & Logs for each component.
+
+---
